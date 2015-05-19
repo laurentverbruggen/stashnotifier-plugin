@@ -707,8 +707,8 @@ public class StashNotifier extends Notifier {
         StringBuilder key = new StringBuilder();
 
         if (prependParentProjectKey || getDescriptor().isPrependParentProjectKey()){
-			if (null != build.getParent()) {
-				key.append(build.getParent().getName()).append('-');
+			if (null != build.getParent().getParent()) {
+				key.append(build.getParent().getParent().getFullName()).append('-');
 			}
         }
 

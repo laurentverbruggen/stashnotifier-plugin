@@ -165,7 +165,15 @@ public class StashNotifier extends Notifier {
 		return includeBuildNumberInKey;
 	}
 
-	@Override
+    public String getProjectKey() {
+        return projectKey;
+    }
+
+    public boolean getPrependParentProjectKey() {
+        return prependParentProjectKey;
+    }
+
+    @Override
 	public boolean prebuild(AbstractBuild<?, ?> build, BuildListener listener) {
 		return processJenkinsEvent(build, listener, StashBuildState.INPROGRESS);
 	}
@@ -547,7 +555,8 @@ public class StashNotifier extends Notifier {
             projectKey
                 = formData.getString("projectKey");
             prependParentProjectKey
-                = formData.getBoolean("prependParentProjectKey")     ;
+                = formData.getBoolean("prependParentProjectKey");
+
 			save();
 			return super.configure(req,formData);
 		}

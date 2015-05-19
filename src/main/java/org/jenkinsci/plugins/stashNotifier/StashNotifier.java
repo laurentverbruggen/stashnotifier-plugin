@@ -552,8 +552,10 @@ public class StashNotifier extends Notifier {
             	= formData.getBoolean("ignoreUnverifiedSsl");
             includeBuildNumberInKey
             	= formData.getBoolean("includeBuildNumberInKey");
-            projectKey
-                = formData.getString("projectKey");
+            if (formData.has("projectKey")) {
+                projectKey
+                        = formData.getString("projectKey");
+            }
             prependParentProjectKey
                 = formData.getBoolean("prependParentProjectKey");
 

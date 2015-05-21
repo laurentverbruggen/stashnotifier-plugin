@@ -29,7 +29,7 @@
   <f:entry title="Override project key" field="projectKey">
     <f:textbox />
   </f:entry>
-  <f:entry title="Prepend parent project key" field="prependParentProjectKey">
+  <f:entry title="Prepend parent project name to key" field="prependParentProjectKey">
     <f:checkbox />
   </f:entry>
  </f:advanced>

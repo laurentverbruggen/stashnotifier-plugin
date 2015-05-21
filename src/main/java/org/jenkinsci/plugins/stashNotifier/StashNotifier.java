@@ -24,6 +24,7 @@ import hudson.model.AbstractProject;
 import hudson.model.BuildListener;
 import hudson.model.Result;
 import hudson.plugins.git.util.BuildData;
+import hudson.plugins.git.Revision;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
@@ -85,6 +86,9 @@ import org.apache.http.impl.client.ProxyAuthenticationStrategy;
  * Only basic authentication is supported at the moment.
  */
 public class StashNotifier extends Notifier {
+
+	public static final int MAX_FIELD_LENGTH = 255;
+	public static final int MAX_URL_FIELD_LENGTH = 450;
 
 	// attributes --------------------------------------------------------------
 
@@ -277,8 +281,11 @@ public class StashNotifier extends Notifier {
 		// MultiSCM may add multiple BuildData actions for each SCM, but we are covered in any case
 		for (BuildData buildData : build.getActions(BuildData.class)) {
 			// get the sha1 of the commit that was built
-
-			String lastBuiltSha1 = buildData.getLastBuiltRevision().getSha1String();
+			Revision lastBuiltRevision = buildData.getLastBuiltRevision();
+			if (lastBuiltRevision == null) {
+				continue;
+			}
+			String lastBuiltSha1 = lastBuiltRevision.getSha1String();
 
 			// Should never be null, but may be blank
 			if (!lastBuiltSha1.isEmpty()) {
@@ -658,8 +665,7 @@ public class StashNotifier extends Notifier {
 		JSONObject json = new JSONObject();
 
         json.put("state", state.name());
-
-        json.put("key", getBuildKey(build, listener));
+        json.put("key", abbreviate(getBuildKey(build, listener), MAX_FIELD_LENGTH));
 
         // This is to replace the odd character Jenkins injects to separate 
         // nested jobs, especially when using the Cloudbees Folders plugin. 
@@ -667,59 +673,84 @@ public class StashNotifier extends Notifier {
         String fullName = StringEscapeUtils.
                 escapeJavaScript(build.getFullDisplayName()).
                 replaceAll("\\\\u00BB", "\\/");
-        json.put("name", fullName);
-
-        json.put("description", getBuildDescription(build, state));
-        json.put("url", Jenkins.getInstance()
-        		.getRootUrl().concat(build.getUrl()));
-
+        json.put("name", abbreviate(fullName, MAX_FIELD_LENGTH));
+		json.put("description", abbreviate(getBuildDescription(build, state), MAX_FIELD_LENGTH));
+		json.put("url", abbreviate(Jenkins.getInstance()
+				.getRootUrl().concat(build.getUrl()), MAX_URL_FIELD_LENGTH));
+        
         return new StringEntity(json.toString(), "UTF-8");
 	}
 
-
+	private static String abbreviate(String text, int maxWidth) {
+		if (text == null) {
+			return null;
+		}
+		if (maxWidth < 4) {
+			throw new IllegalArgumentException("Minimum abbreviation width is 4");
+		}
+		if (text.length() <= maxWidth) {
+			return text;
+		}
+		return text.substring(0, maxWidth - 3) + "...";
+	}
 
 	/**
-	 * Returns the build key used in the Stash notification. Includes the
-	 * build number depending on the user setting.
+	 * Return the old-fashion build key
 	 *
-	 * @param 	build	the build to notify Stash of
-	 * @return	the build key for the Stash notification
+	 * @param  build the build to notify Stash of
+	 * @return default build key
 	 */
+	private String getDefaultBuildKey(final AbstractBuild<?, ?> build) {
+		StringBuilder key = new StringBuilder();
+
+		key.append(build.getProject().getName());
+		if (includeBuildNumberInKey
+				|| getDescriptor().isIncludeBuildNumberInKey()) {
+			key.append('-').append(build.getNumber());
+		}
+		key.append('-').append(Jenkins.getInstance().getRootUrl());
+
+		return key.toString();
+	}
+
+		/**
+         * Returns the build key used in the Stash notification. Includes the
+         * build number depending on the user setting.
+         *
+         * @param 	build	the build to notify Stash of
+         * @return	the build key for the Stash notification
+         */
 	private String getBuildKey(final AbstractBuild<?, ?> build,
 							   BuildListener listener) {
 
-        String overriddenKey = (projectKey != null && projectKey.trim().length() > 0) ? projectKey : getDescriptor().getProjectKey();
+		StringBuilder key = new StringBuilder();
+
+		if (prependParentProjectKey || getDescriptor().isPrependParentProjectKey()){
+			if (null != build.getParent().getParent()) {
+				key.append(build.getParent().getParent().getFullName()).append('-');
+			}
+		}
+
+		String overriddenKey = (projectKey != null && projectKey.trim().length() > 0) ? projectKey : getDescriptor().getProjectKey();
 
 		if (overriddenKey != null && overriddenKey.trim().length() > 0) {
 			PrintStream logger = listener.getLogger();
 			try {
 				EnvVars environment = build.getEnvironment(listener);
-				return StringEscapeUtils.escapeJavaScript(environment.expand(projectKey));
+				key.append(environment.expand(projectKey));
 			} catch (IOException e) {
-				logger.println("Unable to expand commit SHA value");
+				logger.println("Cannot expand build key from parameter. Processing with default build key");
 				e.printStackTrace(logger);
-				return null;
+				key.append(getDefaultBuildKey(build));
 			} catch (InterruptedException e) {
-				logger.println("Unable to expand commit SHA value");
+				logger.println("Cannot expand build key from parameter. Processing with default build key");
 				e.printStackTrace(logger);
-				return null;
+				key.append(getDefaultBuildKey(build));
 			}
+		} else {
+			key.append(getDefaultBuildKey(build));
 		}
 
-        StringBuilder key = new StringBuilder();
-
-        if (prependParentProjectKey || getDescriptor().isPrependParentProjectKey()){
-			if (null != build.getParent().getParent()) {
-				key.append(build.getParent().getParent().getFullName()).append('-');
-			}
-        }
-
-		key.append(build.getProject().getName());
-        if (includeBuildNumberInKey
-        		|| getDescriptor().isIncludeBuildNumberInKey()) {
-			key.append('-').append(build.getNumber());
-		}
-		key.append('-').append(Jenkins.getInstance().getRootUrl());
 		return StringEscapeUtils.escapeJavaScript(key.toString());
 	}
 
